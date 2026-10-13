@@ -1,19 +1,21 @@
-# StellarWP Core Update Notice
+# Nexcess Banners
 
-[![CI](https://github.com/stellarwp/core-update-notice/workflows/CI/badge.svg)](https://github.com/stellarwp/core-update-notice/actions?query=branch%3Amain)
+[![CI](https://github.com/stellarwp/banners/workflows/CI/badge.svg)](https://github.com/stellarwp/banners/actions?query=branch%3Amain)
 
-A WordPress core update notice for plugin-owned admin pages, dismissed once across every plugin
-that displays it.
+Marketing banners for WordPress admin pages, printed where you call them and dismissed per user across
+every plugin that bundles the package.
 
 ## Table of contents
 
 * [Installation](#installation)
 * [Notes on examples](#notes-on-examples)
-* [Displaying the notice](#displaying-the-notice)
-* [Translations](#translations)
-* [Service containers](#service-containers)
+* [Registering banners](#registering-banners)
+* [Rendering a banner](#rendering-a-banner)
+* [Fields](#fields)
+* [Versions](#versions)
+* [Replacing the template](#replacing-the-template)
+* [When a banner renders](#when-a-banner-renders)
 * [Dismissal](#dismissal)
-* [Choosing which plugin displays the notice](#choosing-which-plugin-displays-the-notice)
 * [Shared state](#shared-state)
 * [Development](#development)
 
@@ -22,204 +24,218 @@ that displays it.
 Install the package from Packagist:
 
 ```bash
-composer require stellarwp/core-update-notice
+composer require stellarwp/banners
 ```
 
 Then prefix it with [Strauss](https://github.com/BrianHenryIE/strauss). This is required, not a
 suggestion: WordPress plugins share one PHP namespace, so two plugins shipping unprefixed copies of
-this package would collide on whichever autoloader registered first, and the version that won would
-be whichever plugin happened to load earliest.
+this package would collide on whichever autoloader registered first.
 
 See the [Strauss setup docs](https://github.com/stellarwp/global-docs/blob/main/docs/strauss-setup.md).
 
-The package is built for this. Everything it shares between plugins is a string key, which Strauss
-leaves alone while it rewrites namespaces and class names, so prefixed copies still agree on one
-dismissal. See [Shared state](#shared-state).
+The package is built for this. Everything it shares between plugins is reached through a string key,
+which Strauss leaves alone while it rewrites namespaces and class names, so prefixed copies still
+agree on one registry, one dismissal and one render per banner. See [Shared state](#shared-state).
 
 ## Notes on examples
 
 Because the package is prefixed, all examples use `StraussGeneratedNamespace` to stand in for
 whatever prefix you configure.
 
-## Displaying the notice
+## Registering banners
 
-Register the notice on `init` and provide a callback that identifies your plugin's admin pages:
-
-```php
-use StraussGeneratedNamespace\StellarWP\CoreUpdateNotice\CoreUpdateNotice;
-use StraussGeneratedNamespace\StellarWP\CoreUpdateNotice\Register;
-
-$isPluginPage = static function (): bool {
-	$screen = get_current_screen();
-
-	return $screen !== null && in_array(
-		$screen->id,
-		[
-			'toplevel_page_my-plugin',
-			'my-plugin_page_my-plugin-settings',
-		],
-		true
-	);
-};
-
-add_action(
-	'init',
-	static fn() => Register::notice( new CoreUpdateNotice(), $isPluginPage )
-);
-```
-
-Use your plugin's existing admin-page helper instead when it has one:
+Every plugin registers its banners on `init`, before anything renders:
 
 ```php
-$isPluginPage = static fn(): bool => my_plugin_is_admin_page();
-```
+use StraussGeneratedNamespace\Nexcess\Banners\Banner;
+use StraussGeneratedNamespace\Nexcess\Banners\BannerFields;
+use StraussGeneratedNamespace\Nexcess\Banners\Registry;
 
-The callback is required so the notice cannot become a global wp-admin notice by accident. It runs
-during `admin_notices`, when `get_current_screen()` is available, not when `Register::notice()` is
-called. Each callback is evaluated at most once per request, and its result is reused for subsequent
-display-filter evaluations. Return `true` only for screens owned by the consuming plugin.
-
-Registration hooks `admin_init` for dismissal and `admin_notices` for output. The notice is shown
-only on an eligible plugin page, only to users with the `update_core` capability, and only while
-WordPress reports an available core upgrade.
-
-## Translations
-
-The default copy is English and untranslated. Pass translated copy using your plugin's text domain:
-
-```php
 add_action(
 	'init',
 	static function (): void {
-		Register::notice(
-			new CoreUpdateNotice( [
-				'heading' => __( 'Keep your site protected. Update to the latest version of WordPress.', 'my-plugin' ),
-				'body'    => __( 'Your site is running on an outdated version of WordPress, …', 'my-plugin' ),
-				'dismiss' => __( 'Dismiss this notice.', 'my-plugin' ),
-			] ),
-			static fn(): bool => my_plugin_is_admin_page()
+		$fields           = new BannerFields();
+		$fields->heading  = __( 'Black Friday: 40% off Pro.', 'my-plugin' );
+		$fields->body     = __( 'Unlock every block and priority support.', 'my-plugin' );
+		$fields->ctaLabel = __( 'Shop the sale', 'my-plugin' );
+		$fields->ctaUrl   = 'https://example.com/black-friday?utm_source=my-plugin';
+		$fields->image    = 'data:image/svg+xml;base64,…';
+		$fields->imageAlt = __( 'Nexcess', 'my-plugin' );
+
+		( new Registry() )->register(
+			new Banner(
+				'nexcess-black-friday-2026',
+				'1.0.0',
+				$fields,
+				new DateTimeImmutable( '2026-11-27 00:00', new DateTimeZone( 'America/New_York' ) ),
+				new DateTimeImmutable( '2026-12-01 00:00', new DateTimeZone( 'America/New_York' ) )
+			)
 		);
 	}
 );
 ```
 
-Any key you leave out falls back to the English default. Call this on `init`, when translations are
-loaded and before `admin_init` runs. Registration at or after `admin_init` is rejected because it
-would miss dismissal handling and could enter the winner contest too late.
+Register on `init`. Earlier, `__()` loads translations too soon. Later, another plugin may already
+have rendered an older version of the banner.
 
-## Service containers
+## Rendering a banner
 
-The package does not depend on a container. A project that uses one can let the container construct
-the notice, then pass that instance to the registration boundary:
-
-```php
-use StraussGeneratedNamespace\StellarWP\CoreUpdateNotice\CoreUpdateNotice;
-use StraussGeneratedNamespace\StellarWP\CoreUpdateNotice\Register;
-
-$container->singleton( CoreUpdateNotice::class );
-$isPluginPage = static fn(): bool => my_plugin_is_admin_page();
-
-add_action(
-	'init',
-	static fn() => Register::notice(
-		$container->get( CoreUpdateNotice::class ),
-		$isPluginPage
-	)
-);
-```
-
-Alternatively, construct the notice first and bind that same instance according to your container's
-API before registering it:
+Fetch a banner by ID and render it wherever it should appear:
 
 ```php
 add_action(
-	'init',
-	static function () use ( $container, $copy, $isPluginPage ): void {
-		$notice = new CoreUpdateNotice( $copy );
-
-		$container->singleton( CoreUpdateNotice::class, $notice );
-
-		Register::notice( $notice, $isPluginPage );
+	'admin_notices',
+	static function (): void {
+		( new Registry() )->get( 'nexcess-black-friday-2026' )->render( static fn(): bool => my_plugin_is_admin_page() );
 	}
 );
 ```
 
-Container setup remains a responsibility of the consuming project; this package only requires a
-`CoreUpdateNotice` instance.
+`render()` prints immediately. Call it in your admin page template, or on a hook such as
+`admin_notices`. The callable decides whether the banner shows here. Without it, the banner renders
+unconditionally.
+
+Render the IDs your plugin registers: once `register()` has run, `get()` cannot throw for them. For
+an ID only other plugins register, check `has()` first, as shown below.
+
+`get()` returns a copy of the newest registered version, so you can change its [fields](#fields) before
+rendering, such as to add your own UTM parameters to the CTA. The change stays with your copy:
+
+```php
+$banner                   = ( new Registry() )->get( 'nexcess-black-friday-2026' );
+$banner->fields()->ctaUrl = add_query_arg( 'utm_source', 'my-plugin', $banner->fields()->ctaUrl );
+$banner->render();
+```
+
+**Do not type-hint the banner `get()` returns.** Another plugin may have registered the newest version,
+so it can be that plugin's prefixed `Banner`: the same methods under a different class name. A
+parameter declared as your `Banner` would throw a `TypeError` on it. Call its methods and set its
+fields' properties, and it works whichever copy it came from.
+
+`get()` throws an `OutOfBoundsException` when no banner has the ID, such as after a typo, before
+`register()` ran, or when no active plugin registers that ID any more. Uncaught, that is a fatal
+error on the admin page, so check `has()` first or catch it:
+
+```php
+$registry = new Registry();
+
+if ( $registry->has( 'nexcess-black-friday-2026' ) ) {
+	$registry->get( 'nexcess-black-friday-2026' )->render();
+}
+```
+
+It is PHP's own class, which Strauss does not prefix, so catch `\OutOfBoundsException`.
+
+## Fields
+
+`BannerFields` holds what a banner says and shows, as public string properties:
+
+| Property | Default | Notes |
+| --- | --- | --- |
+| `heading` | `''` | Bold first line. |
+| `body` | `''` | |
+| `ctaLabel` | `''` | The button renders only when both `ctaLabel` and `ctaUrl` are set. |
+| `ctaUrl` | `''` | Add your own UTM parameters. Opens in the same tab. |
+| `image` | `''` | A URL or a `data:` URI, shown at most 64px wide. |
+| `imageAlt` | `''` | The image's alt text. Leave it empty when the image only decorates, such as a logo beside a heading that already names the product, and screen readers skip it. |
+| `dismissLabel` | `'Dismiss this banner.'` | Screen-reader label of the dismiss control. |
+
+The schedule is not a field. `Banner`'s fourth and fifth arguments, `?DateTimeImmutable $start` and
+`?DateTimeImmutable $end`, bound it. Either may be null, for no bound. The banner shows from `start`
+and stops at `end`, compared as moments in time, so their time zones do not matter.
+
+The markup lives in `src/templates/banner.php`, which escapes every value at output. Strauss copies it
+with the classes.
+
+## Replacing the template
+
+Filter `nx_banners_template:{id}` to render a banner with your own template file:
+
+```php
+add_filter(
+	'nx_banners_template:my-plugin-pro-upsell',
+	static fn(): string => __DIR__ . '/templates/pro-upsell-banner.php'
+);
+```
+
+The template gets `$fields`, `$dismissUrl` and `$inline`. Start from the bundled one: it escapes
+every value, adds the `inline` class when `$inline` is true, and links the dismiss control to
+`$dismissUrl`. Read `$fields` only through its properties, never by type, since it may be another
+copy's `BannerFields`.
+
+The filter name is a string, so it applies whichever plugin renders the ID. Filter only IDs you own.
+A value that is not the path of a file falls back to the bundled template.
+
+## Versions
+
+Every banner has a version, `Banner`'s second argument. When several plugins register the same ID,
+the registry keeps the newest by `version_compare()`, in whatever order they register. On a tie, the
+first registered stays. Every plugin then renders that version, with the code of the plugin that
+registered it.
+
+So when product A registers version 1.0.0 of `nexcess-black-friday-2026` and product B registers 1.0.1,
+both render 1.0.1. Bump the version whenever a banner's copy, schedule or image changes.
+
+Dismissal is keyed by ID, not version: a user who dismissed 1.0.0 does not see 1.0.1.
+
+## When a banner renders
+
+`render()` prints the banner unless one of these holds, checked in this order:
+
+1. The request is not for wp-admin: `is_admin()` is false.
+2. Another copy of the package already rendered the same banner ID on this request.
+3. The current time is before `start` or at or after `end`.
+4. The current user dismissed it.
+5. The callable was passed and returned false.
+
+The callable runs last and only when it can still matter, so an expensive check costs nothing on a
+banner that would not show anyway.
+
+When two plugins render the same banner ID on one request, the first to call `render()` prints it and
+the other prints nothing. Different IDs each render.
+
+The banner is a core `.notice`. Rendered on a notice hook, `admin_notices`, `all_admin_notices`,
+`network_admin_notices` or `user_admin_notices`, it is left to wp-admin's `common.js`, which moves it
+under the page heading like every other notice. Rendered anywhere else, it carries `inline`, which
+`common.js` leaves alone, so it stays where you called `render()`.
 
 ## Dismissal
 
-Dismissals are stored by exact WordPress version. If a site running 6.7.1 dismisses an offer to
-update to 6.8.2, only the notice for 6.8.2 is hidden. A later offer for 6.8.3 or 6.9.0 appears
-normally. Likewise, dismissing 6.9.0 does not hide a subsequent 6.8.3 security update because they
-are separate versions.
+Dismissals are per user, stored in user meta as the time of the dismissal, keyed by banner ID.
+Dismissing a banner hides it for that user in every plugin that renders the same ID, and leaves every
+other banner alone. Treat a published ID as permanent: renaming it shows the banner again to everyone
+who dismissed it.
 
-The dismiss link carries the offered version and its nonce is bound to that exact value. The handler
-validates and adds the version the user saw instead of re-querying an offer that may have changed
-since the page was rendered. Stale links add their version without replacing other dismissals.
+The dismiss control is a nonce-protected link back to the current page. The banner's own `render()`
+stores the dismissal when that page loads again, since a client calling `render()` mid-page leaves no
+earlier hook to handle it on. Nothing redirects, so the dismiss arguments stay in the address bar
+until the next navigation. Repeating the request is harmless and keeps the first dismissal time. A
+link with a bad nonce, or from a logged-out visitor, is ignored and the banner renders as usual.
 
-## Choosing which plugin displays the notice
-
-Every copy enters a global dismissal contest when `Register::notice()` runs. During
-`admin_notices`, only copies whose plugin-page callback returns `true` enter a separate display
-contest. The eligible instance with the highest `CoreUpdateNotice::NOTICE_VERSION` renders. If no
-copy is eligible for the current screen, nothing renders.
-
-For example, on a Kadence Blocks page, Kadence's copy can render while GiveWP's copy stands down,
-even if GiveWP bundles a newer release. If more than one plugin claims the screen, the newest
-eligible copy wins and plugin load order does not decide between different versions.
-
-The newest copy registered anywhere in wp-admin handles dismissal. This lets it process the shared
-dismiss link even when an older copy rendered on its own plugin page. Plugin-page callbacks are not
-evaluated during `admin_init` dismissal handling.
-
-Equal versions fall back to the first instance registered.
-
-Bump `NOTICE_VERSION` whenever the notice's copy or behaviour changes. It is deliberately separate
-from the package version, so a release that only touches tooling does not reshuffle which plugin
-owns the notice.
+No script ships. The notice carries `is-dismissible` for the padding the control needs, and core's
+`makeNoticesDismissible()` skips notices that already contain a `.notice-dismiss`, so no second,
+non-persisting button is appended.
 
 ## Shared state
 
-Each plugin prefixes its own copy, which rewrites namespaces and class names but not string
-literals. Everything shared between plugins is therefore a string key:
+Each plugin prefixes its own copy, which rewrites namespaces and class names but not string literals.
+Everything shared between plugins is therefore reached through a string key:
 
 | Key | Purpose |
 | --- | --- |
-| `nx_wp_core_update_notice_dismissed` | Site option containing exact dismissed WordPress versions. Non-autoloaded. |
-| `nx-dismiss-wp-core-update-notice` | Dismiss query argument and nonce action, bound to the rendered WordPress version. |
-| `nx_wp_core_update_notice_winner` | WordPress filter that elects the global dismissal handler. |
-| `nx_wp_core_update_notice_display_winner` | WordPress filter that elects a renderer from copies eligible for the current screen. |
+| `nx_banners` | `$GLOBALS` key of the registry, as `[ id => banner ]`. A banner there may be any copy's `Banner`. |
+| `nx_banners_dismissed` | User meta: when the user dismissed each banner, as `[ id => Unix timestamp ]`. |
+| `nx-banners-dismiss` | Dismiss query argument carrying the banner ID. The nonce action is `nx-banners-dismiss:{id}`. |
+| `nx-banners-nonce` | Nonce query argument, named so it cannot replace a `_wpnonce` already in the page URL. |
+| `nx_banners_rendered:{id}` | Action fired when a banner renders; later copies check `did_action()` and stand down. |
+| `nx_banners_template:{id}` | Filter: the path of the template file that banner renders with. |
 
-The shared filters require a version string and object reference at minimum, so prefixed copies can
-participate without sharing PHP classes or direct globals. Copies must preserve additional fields
-unchanged for forward compatibility.
+A registered banner is called only through its methods, never checked by class: `version()` while
+registering, and `fields()` and `render( ?callable $shouldDisplay )` by whoever fetches it, along with
+the `BannerFields` property names.
 
-These keys and the values passed through them are a cross-version compatibility contract. Do not
-rename them or require the winner object to belong to a particular PHP class: another plugin may
-still be running an older prefixed copy. Both winner filters use this minimum payload shape:
-
-```php
-[
-	'version' => CoreUpdateNotice::NOTICE_VERSION,
-	'notice'  => $notice,
-]
-```
-
-The highest version wins, and equal versions keep the first candidate. The dismiss nonce action
-is always `CoreUpdateNotice::DISMISS_ACTION . ':' . $offeredVersion`; changing that formula would
-prevent a different bundled copy from handling the rendered link.
-
-Dismissal is a nonce-protected link rather than the core dismiss button, which only removes the node
-client side. The notice carries `is-dismissible` because that rule supplies the `position: relative`
-and `padding-right: 48px` the absolutely positioned control needs, and core's
-`makeNoticesDismissible()` skips notices that already contain a `.notice-dismiss`, so no second,
-non-persisting button is appended. No script ships.
-
-On multisite, the notice intentionally appears only on individual site admin screens, not in
-Network Admin. The `update_core` capability still limits it to super administrators, while
-`update_option` stores each site's dismissal separately and the update transient remains network
-wide.
+These keys and methods are a cross-version compatibility contract. Do not rename them or change their
+shape: another plugin may still be running an older prefixed copy.
 
 ## Development
 
@@ -236,8 +252,6 @@ composer check
 | `composer check` | All three, in that order |
 
 The suite uses [Brain\Monkey](https://github.com/Brain-WP/BrainMonkey) to stub the WordPress
-functions the package calls, so it runs with nothing but Composer installed. `exit` cannot be
-intercepted in a test, so `CoreUpdateNotice::terminate()` wraps it and the suite overrides that
-method.
+functions the package calls, so it runs with nothing but Composer installed.
 
 Requires PHP 7.4+ and WordPress 6.6+.
