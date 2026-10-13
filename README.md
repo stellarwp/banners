@@ -59,14 +59,13 @@ add_action(
 		$fields->body     = __( 'Unlock every block and priority support.', 'my-plugin' );
 		$fields->ctaLabel = __( 'Shop the sale', 'my-plugin' );
 		$fields->ctaUrl   = 'https://example.com/black-friday?utm_source=my-plugin';
-		$fields->image    = 'data:image/svg+xml;base64,…';
-		$fields->imageAlt = __( 'Nexcess', 'my-plugin' );
 
 		( new Registry() )->register(
 			new Banner(
 				'nexcess-black-friday-2026',
 				'1.0.0',
 				$fields,
+				plugins_url( 'vendor-prefixed/stellarwp/banners/', MY_PLUGIN_FILE ),
 				new DateTimeImmutable( '2026-11-27 00:00', new DateTimeZone( 'America/New_York' ) ),
 				new DateTimeImmutable( '2026-12-01 00:00', new DateTimeZone( 'America/New_York' ) )
 			)
@@ -77,6 +76,10 @@ add_action(
 
 Register on `init`. Earlier, `__()` loads translations too soon. Later, another plugin may already
 have rendered an older version of the banner.
+
+The fourth argument is the URL your plugin serves its copy of the package from, with or without a
+trailing slash. The banner loads its stylesheet from there, so build it with `plugins_url()` against
+wherever Strauss put the package in your plugin.
 
 ## Rendering a banner
 
@@ -91,9 +94,9 @@ add_action(
 );
 ```
 
-`render()` prints immediately. Call it in your admin page template, or on a hook such as
-`admin_notices`. The callable decides whether the banner shows here. Without it, the banner renders
-unconditionally.
+`render()` prints immediately: the link to the banner's stylesheet, then the banner. Call it in your
+admin page template, or on a hook such as `admin_notices`. The callable decides whether the banner
+shows here. Without it, the banner renders unconditionally.
 
 Render the IDs your plugin registers: once `register()` has run, `get()` cannot throw for them. For
 an ID only other plugins register, check `has()` first, as shown below.
@@ -132,20 +135,19 @@ It is PHP's own class, which Strauss does not prefix, so catch `\OutOfBoundsExce
 
 | Property | Default | Notes |
 | --- | --- | --- |
-| `heading` | `''` | Bold first line. |
-| `body` | `''` | |
+| `heading` | `''` | The message, in white. |
+| `body` | `''` | Follows the heading in blue, on a line of its own where the banner is narrow. |
 | `ctaLabel` | `''` | The button renders only when both `ctaLabel` and `ctaUrl` are set. |
-| `ctaUrl` | `''` | Add your own UTM parameters. Opens in the same tab. |
-| `image` | `''` | A URL or a `data:` URI, shown at most 64px wide. |
-| `imageAlt` | `''` | The image's alt text. Leave it empty when the image only decorates, such as a logo beside a heading that already names the product, and screen readers skip it. |
+| `ctaUrl` | `''` | Add your own UTM parameters. Opens in a new tab. |
 | `dismissLabel` | `'Dismiss this banner.'` | Screen-reader label of the dismiss control. |
 
-The schedule is not a field. `Banner`'s fourth and fifth arguments, `?DateTimeImmutable $start` and
+The schedule is not a field. `Banner`'s fifth and sixth arguments, `?DateTimeImmutable $start` and
 `?DateTimeImmutable $end`, bound it. Either may be null, for no bound. The banner shows from `start`
 and stops at `end`, compared as moments in time, so their time zones do not matter.
 
-The markup lives in `src/templates/banner.php`, which escapes every value at output. Strauss copies it
-with the classes.
+The markup lives in `src/templates/banner.php`, which escapes every value at output, and its styles in
+`src/templates/banner.css`. The banner sizes itself to the space it is given, not the screen: wide at
+the top of a page, stacked in a narrow spot such as a settings sidebar.
 
 ## Replacing the template
 
@@ -164,17 +166,19 @@ every value, adds the `inline` class when `$inline` is true, and links the dismi
 copy's `BannerFields`.
 
 The filter name is a string, so it applies whichever plugin renders the ID. Filter only IDs you own.
-A value that is not the path of a file falls back to the bundled template.
+A value that is not the path of a file falls back to the bundled template. The bundled stylesheet
+still prints.
 
 ## Versions
 
 Every banner has a version, `Banner`'s second argument. When several plugins register the same ID,
 the registry keeps the newest by `version_compare()`, in whatever order they register. On a tie, the
-first registered stays. Every plugin then renders that version, with the code of the plugin that
-registered it.
+first registered stays. Every plugin then renders that version, with the code, template and
+stylesheet of the plugin that registered it. That is why the package URL is given to the banner and
+not to `render()`.
 
 So when product A registers version 1.0.0 of `nexcess-black-friday-2026` and product B registers 1.0.1,
-both render 1.0.1. Bump the version whenever a banner's copy, schedule or image changes.
+both render 1.0.1. Bump the version whenever a banner's copy or schedule changes.
 
 Dismissal is keyed by ID, not version: a user who dismissed 1.0.0 does not see 1.0.1.
 
@@ -194,6 +198,10 @@ banner that would not show anyway.
 When two plugins render the same banner ID on one request, the first to call `render()` prints it and
 the other prints nothing. Different IDs each render.
 
+Rendering prints the stylesheet's link just before the banner, not in the page head: `render()` runs
+after wp-admin printed the head's styles, and a style enqueued that late prints in the footer, which
+would leave the banner unstyled until the page finishes loading. WordPress prints each handle once.
+
 The banner is a core `.notice`. Rendered on a notice hook, `admin_notices`, `all_admin_notices`,
 `network_admin_notices` or `user_admin_notices`, it is left to wp-admin's `common.js`, which moves it
 under the page heading like every other notice. Rendered anywhere else, it carries `inline`, which
@@ -212,9 +220,8 @@ earlier hook to handle it on. Nothing redirects, so the dismiss arguments stay i
 until the next navigation. Repeating the request is harmless and keeps the first dismissal time. A
 link with a bad nonce, or from a logged-out visitor, is ignored and the banner renders as usual.
 
-No script ships. The notice carries `is-dismissible` for the padding the control needs, and core's
-`makeNoticesDismissible()` skips notices that already contain a `.notice-dismiss`, so no second,
-non-persisting button is appended.
+No script ships. The notice does not carry `is-dismissible`, so core's `makeNoticesDismissible()`
+adds no second, non-persisting button.
 
 ## Shared state
 
@@ -229,6 +236,7 @@ Everything shared between plugins is therefore reached through a string key:
 | `nx-banners-nonce` | Nonce query argument, named so it cannot replace a `_wpnonce` already in the page URL. |
 | `nx_banners_rendered:{id}` | Action fired when a banner renders; later copies check `did_action()` and stand down. |
 | `nx_banners_template:{id}` | Filter: the path of the template file that banner renders with. |
+| `nx-banners-{id}` | Handle of the banner's stylesheet in WordPress's style registry. |
 
 A registered banner is called only through its methods, never checked by class: `version()` while
 registering, and `fields()` and `render( ?callable $shouldDisplay )` by whoever fetches it, along with

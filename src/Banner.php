@@ -23,6 +23,11 @@ final class Banner {
 	private const TEMPLATE_FILTER = 'nx_banners_template:';
 
 	/**
+	 * Prefix of the handle a banner's stylesheet registers under.
+	 */
+	private const STYLE_HANDLE = 'nx-banners-';
+
+	/**
 	 * The hooks core prints notices on. wp-admin's common.js moves a notice printed there under the
 	 * page heading, unless it carries "inline".
 	 */
@@ -34,6 +39,8 @@ final class Banner {
 
 	private BannerFields $fields;
 
+	private string $packageUrl;
+
 	private ?DateTimeImmutable $start;
 
 	private ?DateTimeImmutable $end;
@@ -41,22 +48,26 @@ final class Banner {
 	/**
 	 * @param string             $id      Shared across plugins: the same ID is the same banner and the same dismissal.
 	 * @param string             $version Compared with version_compare(): the registry keeps the newest version of an ID.
-	 * @param BannerFields       $fields  The banner fields.
-	 * @param ?DateTimeImmutable $start   The banner shows from this moment. Null shows it from now.
-	 * @param ?DateTimeImmutable $end     The banner stops showing at this moment. Null never ends it.
+	 * @param BannerFields       $fields     The banner fields.
+	 * @param string             $packageUrl Where the registering plugin serves its copy of this package, such as
+	 *                                       plugins_url( 'vendor-prefixed/stellarwp/banners/', MY_PLUGIN_FILE ).
+	 * @param ?DateTimeImmutable $start      The banner shows from this moment. Null shows it from now.
+	 * @param ?DateTimeImmutable $end        The banner stops showing at this moment. Null never ends it.
 	 */
 	public function __construct(
 		string $id,
 		string $version,
 		BannerFields $fields,
+		string $packageUrl,
 		?DateTimeImmutable $start = null,
 		?DateTimeImmutable $end = null
 	) {
-		$this->id      = $id;
-		$this->version = $version;
-		$this->fields  = $fields;
-		$this->start   = $start;
-		$this->end     = $end;
+		$this->id         = $id;
+		$this->version    = $version;
+		$this->fields     = $fields;
+		$this->packageUrl = $packageUrl;
+		$this->start      = $start;
+		$this->end        = $end;
 	}
 
 	public function id(): string {
@@ -99,7 +110,23 @@ final class Banner {
 		// anywhere else where the client called render().
 		$inline = array_filter( self::NOTICE_HOOKS, 'doing_action' ) === [];
 
+		$this->printStylesheet();
 		$this->printTemplate( $this->fields, Dismissals::url( $this->id ), $inline );
+	}
+
+	/**
+	 * Print the stylesheet's link right here. render() runs mid-page, after wp-admin printed the
+	 * head's styles, so an enqueued one would print in the footer and leave the banner unstyled until then.
+	 */
+	private function printStylesheet(): void {
+		wp_register_style(
+			self::STYLE_HANDLE . $this->id,
+			rtrim( $this->packageUrl, '/' ) . '/src/templates/banner.css',
+			[],
+			// A new release replaces the bundled file at the same URL, so its modification time busts caches.
+			(string) filemtime( __DIR__ . '/templates/banner.css' )
+		);
+		wp_print_styles( self::STYLE_HANDLE . $this->id );
 	}
 
 	/**

@@ -13,7 +13,7 @@ use OutOfBoundsException;
 final class RegistryTest extends TestCase {
 
 	private static function banner( string $version, string $heading ): Banner {
-		return new Banner( 'promo', $version, self::fields( [ 'heading' => $heading ] ) );
+		return new Banner( 'promo', $version, self::fields( [ 'heading' => $heading ] ), self::PACKAGE_URL );
 	}
 
 	public function testANewerVersionReplacesTheRegisteredOne(): void {
