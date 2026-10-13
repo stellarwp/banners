@@ -103,10 +103,11 @@ final class Banner {
 	}
 
 	/**
-	 * Print the bundled template, or the one a filter chose for this ID, with $fields, $dismissUrl and
-	 * $inline in scope.
+	 * Print the bundled template, or the one a filter chose for this ID, with $fields, $dismiss_url and
+	 * $inline in scope. They are snake_case so that templates pass the WordPress coding standards most
+	 * plugins lint with.
 	 */
-	private function printTemplate( BannerFields $fields, string $dismissUrl, bool $inline ): void {
+	private function printTemplate( BannerFields $fields, string $dismiss_url, bool $inline ): void {
 		$bundled  = __DIR__ . '/templates/banner.php';
 		$template = apply_filters( self::TEMPLATE_FILTER . $this->id, $bundled );
 

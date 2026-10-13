@@ -158,9 +158,9 @@ add_filter(
 );
 ```
 
-The template gets `$fields`, `$dismissUrl` and `$inline`. Start from the bundled one: it escapes
+The template gets `$fields`, `$dismiss_url` and `$inline`. Start from the bundled one: it escapes
 every value, adds the `inline` class when `$inline` is true, and links the dismiss control to
-`$dismissUrl`. Read `$fields` only through its properties, never by type, since it may be another
+`$dismiss_url`. Read `$fields` only through its properties, never by type, since it may be another
 copy's `BannerFields`.
 
 The filter name is a string, so it applies whichever plugin renders the ID. Filter only IDs you own.

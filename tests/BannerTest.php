@@ -162,14 +162,15 @@ final class BannerTest extends TestCase {
 		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) ) );
 	}
 
-	public function testAFilteredTemplateReplacesTheMarkup(): void {
+	public function testAFilteredTemplateReplacesTheMarkupAndGetsTheDismissUrl(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 		Filters\expectApplied( 'nx_banners_template:promo' )->once()->andReturn( __DIR__ . '/Fixtures/custom-banner.php' );
 
 		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
 
-		$this->assertSame( '<p class="custom">Go Pro</p>', trim( $output ) );
+		$this->assertStringContainsString( '<p class="custom">Go Pro</p>', $output );
+		$this->assertMatchesRegularExpression( '/<a class="custom-dismiss" href="[^"]*\/wp-admin\/\?nx-banners-dismiss=x">/', $output );
 	}
 
 	/**

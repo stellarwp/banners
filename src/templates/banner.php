@@ -9,7 +9,7 @@
  * makeNoticesDismissible() skips notices that already carry a .notice-dismiss.
  *
  * @var \Nexcess\Banners\BannerFields $fields
- * @var string $dismissUrl
+ * @var string $dismiss_url
  * @var bool $inline
  */
 
@@ -27,5 +27,5 @@ defined( 'ABSPATH' ) || exit;
 			<p><a href="<?php echo esc_url( $fields->ctaUrl ); ?>" class="button button-primary"><?php echo esc_html( $fields->ctaLabel ); ?></a></p>
 		<?php endif; ?>
 	</div>
-	<a href="<?php echo esc_url( $dismissUrl ); ?>" class="notice-dismiss" style="text-decoration:none;"><span class="screen-reader-text"><?php echo esc_html( $fields->dismissLabel ); ?></span></a>
+	<a href="<?php echo esc_url( $dismiss_url ); ?>" class="notice-dismiss" style="text-decoration:none;"><span class="screen-reader-text"><?php echo esc_html( $fields->dismissLabel ); ?></span></a>
 </div>
