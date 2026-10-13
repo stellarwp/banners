@@ -1,15 +1,33 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\CoreUpdateNotice\Tests;
+namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey;
-use Brain\Monkey\Filters;
+use Brain\Monkey\Expectation\EscapeHelper;
 use Brain\Monkey\Functions;
 use Mockery;
+use Nexcess\Banners\Banner;
+use Nexcess\Banners\BannerFields;
 use PHPUnit\Framework\TestCase as PHPUnitTestCase;
-use StellarWP\CoreUpdateNotice\CoreUpdateNotice;
 
 abstract class TestCase extends PHPUnitTestCase {
+
+	protected const USER_ID = 7;
+
+	/**
+	 * @param array<string, string> $values Keyed by BannerFields property name.
+	 */
+	protected static function fields( array $values ): BannerFields {
+		$fields = new BannerFields();
+
+		foreach ( $values as $property => $value ) {
+			// A misspelled name would add a property the template never reads.
+			self::assertTrue( property_exists( $fields, $property ), sprintf( 'BannerFields has no "%s".', $property ) );
+			$fields->{$property} = $value;
+		}
+
+		return $fields;
+	}
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -17,13 +35,27 @@ abstract class TestCase extends PHPUnitTestCase {
 		Monkey\setUp();
 
 		Functions\stubEscapeFunctions();
+		Functions\when( 'esc_url' )->alias(
+			static function ( string $url, ?array $protocols = null ): string {
+				// WordPress drops a data: URI unless the caller allows that protocol explicitly.
+				if ( strpos( $url, 'data:' ) === 0 && ! in_array( 'data', $protocols ?? [], true ) ) {
+					return '';
+				}
+
+				return EscapeHelper::escUrl( $url );
+			}
+		);
+		Functions\when( 'get_current_user_id' )->justReturn( self::USER_ID );
+		// A logged-in user in wp-admin; the tests of the other cases override these.
+		Functions\when( 'is_admin' )->justReturn( true );
+		Functions\when( 'is_user_logged_in' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
-		unset( $_GET[ CoreUpdateNotice::DISMISS_ACTION ] );
+		unset( $_GET['nx-banners-dismiss'], $_GET['nx-banners-nonce'] );
 
 		// Brain\Monkey expectations are Mockery assertions; count them so tests that only assert
-		// through expectAdded()/expect() are not reported as risky.
+		// through expect() are not reported as risky.
 		$container = Mockery::getContainer();
 
 		if ( $container !== null ) {
@@ -36,57 +68,29 @@ abstract class TestCase extends PHPUnitTestCase {
 	}
 
 	/**
-	 * Stub the update_core read that CoreUpdateNotice performs.
+	 * Stub the current user's stored dismissals.
 	 *
-	 * @param string|null $response The response WordPress reports, or null for no offer at all.
-	 * @param string      $offered  The version being offered, WordPress calls it "current".
-	 */
-	protected function stubCoreUpdate( ?string $response, string $offered = '9.9' ): void {
-		Functions\when( 'get_core_updates' )->justReturn(
-			$response === null ? [] : [ (object) [ 'response' => $response, 'current' => $offered ] ]
-		);
-	}
-
-	/**
-	 * Stub the stored dismissal option.
-	 *
-	 * @param array<string, true> $value Exact dismissed versions, keyed by version.
+	 * @param array<string, int> $value When each banner was dismissed, keyed by banner ID.
 	 */
 	protected function stubDismissed( array $value ): void {
-		Functions\when( 'get_option' )->alias(
-			static function ( string $name, $default = false ) use ( $value ) {
-				return $name === CoreUpdateNotice::DISMISSED_OPTION ? $value : $default;
+		Functions\when( 'get_user_meta' )->alias(
+			static function ( int $userId, string $key ) use ( $value ) {
+				return $userId === self::USER_ID && $key === 'nx_banners_dismissed' ? $value : '';
 			}
 		);
 	}
 
 	/**
-	 * Stub everything the render path needs beyond the update and dismissal state.
+	 * Stub everything the render path needs beyond the dismissal state.
 	 */
 	protected function stubRenderable(): void {
-		Functions\when( 'current_user_can' )->justReturn( true );
-		Functions\when( 'add_query_arg' )->justReturn( '/wp-admin/?' . CoreUpdateNotice::DISMISS_ACTION . '=1' );
+		Functions\when( 'add_query_arg' )->justReturn( '/wp-admin/?nx-banners-dismiss=x' );
 		Functions\when( 'wp_nonce_url' )->returnArg();
 	}
 
-	protected function stubDisplayWinner( CoreUpdateNotice $notice, int $times = 1 ): void {
-		$this->stubWinner( CoreUpdateNotice::DISPLAY_WINNER_FILTER, $notice, $times );
-	}
-
-	protected function stubHandlerWinner( CoreUpdateNotice $notice, int $times = 1 ): void {
-		$this->stubWinner( CoreUpdateNotice::HANDLER_WINNER_FILTER, $notice, $times );
-	}
-
-	private function stubWinner( string $filter, CoreUpdateNotice $notice, int $times ): void {
-		Filters\expectApplied( $filter )
-			->times( $times )
-			->with( null )
-			->andReturn( $notice->selectWinner( null ) );
-	}
-
-	protected function render( CoreUpdateNotice $notice ): string {
+	protected function render( Banner $banner, ?callable $shouldDisplay = null ): string {
 		ob_start();
-		$notice->render();
+		$banner->render( $shouldDisplay );
 
 		return (string) ob_get_clean();
 	}

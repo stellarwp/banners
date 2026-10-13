@@ -1,12 +1,16 @@
 {
-	"name": "stellarwp/core-update-notice",
-	"description": "A WordPress core update notice scoped to consuming plugins' admin pages, with dismissal shared across plugins.",
+	"name": "stellarwp/banners",
+	"description": "Marketing banners for WordPress admin pages, dismissed per user across every plugin that bundles them.",
 	"type": "library",
 	"license": "MIT",
 	"authors": [
 		{
 			"name": "StellarWP",
 			"email": "dev@stellarwp.com"
+		},
+		{
+			"name": "Dimi",
+			"email": "dimi@nexcess.com"
 		}
 	],
 	"require": {
@@ -23,12 +27,12 @@
 	},
 	"autoload": {
 		"psr-4": {
-			"StellarWP\\CoreUpdateNotice\\": "src/"
+			"Nexcess\\Banners\\": "src/"
 		}
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"StellarWP\\CoreUpdateNotice\\Tests\\": "tests/"
+			"Nexcess\\Banners\\Tests\\": "tests/"
 		}
 	},
 	"scripts": {
