@@ -191,12 +191,22 @@ Dismissal is keyed by ID, not version: a user who dismissed 1.0.0 does not see 1
 
 1. The request is not for wp-admin: `is_admin()` is false.
 2. Another copy of the package already rendered the same banner ID on this request.
-3. The current time is before `start` or at or after `end`.
+3. The current time is before `start` or at or after `end`, unless the schedule filter says otherwise.
 4. The current user dismissed it.
 5. The callable was passed and returned false.
 
 The callable runs last and only when it can still matter, so an expensive check costs nothing on a
 banner that would not show anyway.
+
+Filter `nx_banners_scheduled:{id}` to decide step 3 yourself, such as to see a banner in QA before it
+starts, without moving the site's clock:
+
+```php
+add_filter( 'nx_banners_scheduled:nexcess-black-friday-2026', '__return_true' );
+```
+
+It receives whether the banner is inside its schedule. Return false to hide a banner inside it. The
+filter applies only when the plugin that registered the banner bundles version 1.1.0 or later.
 
 When two plugins render the same banner ID on one request, the first to call `render()` prints it and
 the other prints nothing. Different IDs each render.
@@ -238,6 +248,7 @@ Everything shared between plugins is therefore reached through a string key:
 | `nx-banners-dismiss` | Dismiss query argument carrying the banner ID. The nonce action is `nx-banners-dismiss:{id}`. |
 | `nx-banners-nonce` | Nonce query argument, named so it cannot replace a `_wpnonce` already in the page URL. |
 | `nx_banners_rendered:{id}` | Action fired when a banner renders; later copies check `did_action()` and stand down. |
+| `nx_banners_scheduled:{id}` | Filter: whether the banner is inside its schedule, as a bool. |
 | `nx-banners-{id}` | Handle of the banner's stylesheet in WordPress's style registry. |
 
 A registered banner is called only through its methods, never checked by class: `version()` while

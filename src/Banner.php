@@ -17,6 +17,12 @@ final class Banner {
 	private const RENDERED_ACTION = 'nx_banners_rendered:';
 
 	/**
+	 * Prefix of the filter on whether a banner is in its schedule. Shared across copies, so it applies
+	 * whichever copy renders the ID.
+	 */
+	private const SCHEDULED_FILTER = 'nx_banners_scheduled:';
+
+	/**
 	 * Prefix of the handle a banner's stylesheet registers under.
 	 */
 	private const STYLE_HANDLE = 'nx-banners-';
@@ -140,8 +146,11 @@ final class Banner {
 	private function isScheduled(): bool {
 		$now = time();
 
-		return ( $this->start === null || $now >= $this->start->getTimestamp() )
+		$scheduled = ( $this->start === null || $now >= $this->start->getTimestamp() )
 			&& ( $this->end === null || $now < $this->end->getTimestamp() );
+
+		// Lets QA show a banner outside its schedule, or hide one inside it, without moving the clock.
+		return (bool) apply_filters( self::SCHEDULED_FILTER . $this->id, $scheduled );
 	}
 
 	/**

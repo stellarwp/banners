@@ -3,6 +3,7 @@
 namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey\Actions;
+use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -256,6 +257,34 @@ final class BannerTest extends TestCase {
 		);
 
 		$this->assertNotSame( '', $this->render( $banner ) );
+	}
+
+	/**
+	 * QA can see a banner before it starts without moving the site's clock.
+	 */
+	public function testTheScheduleFilterCanShowABannerBeforeItsStart(): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+		Filters\expectApplied( 'nx_banners_scheduled:promo' )->once()->with( false )->andReturn( true );
+
+		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, new DateTimeImmutable( '+1 hour' ) ) ) );
+	}
+
+	public function testTheScheduleFilterCanHideABannerInsideItsSchedule(): void {
+		$this->stubDismissed( [] );
+		Filters\expectApplied( 'nx_banners_scheduled:promo' )->once()->with( true )->andReturn( false );
+
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, new DateTimeImmutable( '-1 hour' ) ) ) );
+	}
+
+	/**
+	 * The filter is per banner ID, so faking one banner's schedule never moves another's.
+	 */
+	public function testTheScheduleFilterOfAnotherBannerChangesNothing(): void {
+		$this->stubDismissed( [] );
+		Filters\expectApplied( 'nx_banners_scheduled:other' )->never();
+
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, new DateTimeImmutable( '+1 hour' ) ) ) );
 	}
 
 	/**
