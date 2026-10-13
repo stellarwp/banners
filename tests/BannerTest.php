@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Nexcess\Banners\Banner;
 use Nexcess\Banners\BannerFields;
+use Nexcess\Banners\Package;
 
 final class BannerTest extends TestCase {
 
@@ -78,7 +79,7 @@ final class BannerTest extends TestCase {
 		$this->stubRenderable();
 
 		$this->assertMatchesRegularExpression(
-			'/^<link rel="stylesheet" href="' . preg_quote( self::PACKAGE_URL . 'src/templates/banner.css', '/' ) . '">\s*<div class="notice /',
+			'/^<link rel="stylesheet" href="' . preg_quote( self::PACKAGE_URL . 'src/templates/banner.css?ver=' . Package::VERSION, '/' ) . '">\s*<div class="notice /',
 			$this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), $packageUrl ) )
 		);
 	}

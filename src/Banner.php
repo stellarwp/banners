@@ -119,8 +119,7 @@ final class Banner {
 			self::STYLE_HANDLE . $this->id,
 			$stylesheet ?? rtrim( $this->packageUrl, '/' ) . '/src/templates/banner.css',
 			[],
-			// A new release replaces the bundled file at the same URL, so its modification time busts caches.
-			$stylesheet === null ? (string) filemtime( __DIR__ . '/templates/banner.css' ) : null
+			$stylesheet === null ? Package::VERSION : null
 		);
 		wp_print_styles( self::STYLE_HANDLE . $this->id );
 	}

@@ -264,4 +264,7 @@ composer check
 The suite uses [Brain\Monkey](https://github.com/Brain-WP/BrainMonkey) to stub the WordPress
 functions the package calls, so it runs with nothing but Composer installed.
 
+Bump `Package::VERSION` with every release. The bundled stylesheet's URL carries it, so browsers
+fetch the new file instead of a cached one.
+
 Requires PHP 7.4+ and WordPress 6.6+.

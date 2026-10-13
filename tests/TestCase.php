@@ -78,14 +78,14 @@ abstract class TestCase extends PHPUnitTestCase {
 
 	/**
 	 * WordPress's style registry, reduced to what render() relies on: printing a registered handle
-	 * prints a link to its file.
+	 * prints a link to its file, carrying its version when it has one.
 	 */
 	private function stubStyles(): void {
 		$styles = [];
 
 		Functions\when( 'wp_register_style' )->alias(
-			static function ( string $handle, string $src ) use ( &$styles ): bool {
-				$styles[ $handle ] = $src;
+			static function ( string $handle, string $src, array $deps = [], ?string $ver = null ) use ( &$styles ): bool {
+				$styles[ $handle ] = $ver === null ? $src : $src . '?ver=' . $ver;
 
 				return true;
 			}
