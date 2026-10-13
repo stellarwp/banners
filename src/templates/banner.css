@@ -38,7 +38,8 @@
 }
 
 .nx-banner__accent {
-	color: #2b69e3;
+	/* The brand blue lightened just enough for 4.5:1 on black: it can render below the 24px large-text size. */
+	color: #336fe4;
 }
 
 /* Outranks wp-admin's link colours and underline. */
