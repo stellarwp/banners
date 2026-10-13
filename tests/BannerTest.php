@@ -3,6 +3,7 @@
 namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey\Actions;
+use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -18,6 +19,19 @@ final class BannerTest extends TestCase {
 		'ctaUrl'   => 'https://example.test/pro',
 		'image'    => 'data:image/svg+xml;base64,PHN2Zy8+',
 	];
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function brokenTemplates(): array {
+		return [
+			'false'          => [ false ],
+			'null'           => [ null ],
+			'an array'       => [ [] ],
+			'a missing file' => [ __DIR__ . '/Fixtures/no-such-template.php' ],
+			'a directory'    => [ __DIR__ ],
+		];
+	}
 
 	/**
 	 * @return array<string, array{string}>
@@ -146,6 +160,34 @@ final class BannerTest extends TestCase {
 		$this->stubRenderable();
 
 		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) ) );
+	}
+
+	public function testAFilteredTemplateReplacesTheMarkup(): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+		Filters\expectApplied( 'nx_banners_template:promo' )->once()->andReturn( __DIR__ . '/Fixtures/custom-banner.php' );
+
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+
+		$this->assertSame( '<p class="custom">Go Pro</p>', trim( $output ) );
+	}
+
+	/**
+	 * A broken filter must neither fatal the page nor hide the banner: by the time the template
+	 * loads, every other copy has already stood down for this ID.
+	 *
+	 * @dataProvider brokenTemplates
+	 *
+	 * @param mixed $template What the filter returned.
+	 */
+	public function testABrokenFilteredTemplateFallsBackToTheBundledOne( $template ): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+		Filters\expectApplied( 'nx_banners_template:promo' )->andReturn( $template );
+
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+
+		$this->assertStringContainsString( '<strong>Go Pro</strong>', $output );
 	}
 
 	public function testRendersWhenTheCallableReturnsTrue(): void {

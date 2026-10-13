@@ -17,6 +17,12 @@ final class Banner {
 	private const RENDERED_ACTION = 'nx_banners_rendered:';
 
 	/**
+	 * Prefix of the filter that swaps a banner's template file. Shared across copies, so it applies
+	 * whichever copy renders the ID.
+	 */
+	private const TEMPLATE_FILTER = 'nx_banners_template:';
+
+	/**
 	 * The hooks core prints notices on. wp-admin's common.js moves a notice printed there under the
 	 * page heading, unless it carries "inline".
 	 */
@@ -97,10 +103,19 @@ final class Banner {
 	}
 
 	/**
-	 * Print the template with only $fields, $dismissUrl and $inline in scope.
+	 * Print the bundled template, or the one a filter chose for this ID, with $fields, $dismissUrl and
+	 * $inline in scope.
 	 */
 	private function printTemplate( BannerFields $fields, string $dismissUrl, bool $inline ): void {
-		require __DIR__ . '/templates/banner.php';
+		$bundled  = __DIR__ . '/templates/banner.php';
+		$template = apply_filters( self::TEMPLATE_FILTER . $this->id, $bundled );
+
+		// Every other copy has already stood down for this ID, so a broken filter must not hide it.
+		if ( ! is_string( $template ) || ! is_file( $template ) ) {
+			$template = $bundled;
+		}
+
+		require $template;
 	}
 
 	private function isScheduled(): bool {
