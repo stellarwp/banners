@@ -52,7 +52,7 @@ abstract class TestCase extends PHPUnitTestCase {
 	}
 
 	protected function tearDown(): void {
-		unset( $_GET['nx-banners-dismiss'], $_GET['nx-banners-nonce'] );
+		unset( $_GET['nx-banners-dismiss'], $_GET['nx-banners-nonce'], $GLOBALS['nx_banners'] );
 
 		// Brain\Monkey expectations are Mockery assertions; count them so tests that only assert
 		// through expect() are not reported as risky.
