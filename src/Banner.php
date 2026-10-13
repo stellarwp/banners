@@ -17,10 +17,9 @@ final class Banner {
 	private const RENDERED_ACTION = 'nx_banners_rendered:';
 
 	/**
-	 * Prefix of the filter that swaps a banner's template file. Shared across copies, so it applies
-	 * whichever copy renders the ID.
+	 * Prefix of the handle a banner's stylesheet registers under.
 	 */
-	private const TEMPLATE_FILTER = 'nx_banners_template:';
+	private const STYLE_HANDLE = 'nx-banners-';
 
 	/**
 	 * The hooks core prints notices on. wp-admin's common.js moves a notice printed there under the
@@ -34,6 +33,8 @@ final class Banner {
 
 	private BannerFields $fields;
 
+	private string $packageUrl;
+
 	private ?DateTimeImmutable $start;
 
 	private ?DateTimeImmutable $end;
@@ -41,22 +42,26 @@ final class Banner {
 	/**
 	 * @param string             $id      Shared across plugins: the same ID is the same banner and the same dismissal.
 	 * @param string             $version Compared with version_compare(): the registry keeps the newest version of an ID.
-	 * @param BannerFields       $fields  The banner fields.
-	 * @param ?DateTimeImmutable $start   The banner shows from this moment. Null shows it from now.
-	 * @param ?DateTimeImmutable $end     The banner stops showing at this moment. Null never ends it.
+	 * @param BannerFields       $fields     The banner fields.
+	 * @param string             $packageUrl Where the registering plugin serves its copy of this package, such as
+	 *                                       plugins_url( 'vendor-prefixed/stellarwp/banners/', MY_PLUGIN_FILE ).
+	 * @param ?DateTimeImmutable $start      The banner shows from this moment. Null shows it from now.
+	 * @param ?DateTimeImmutable $end        The banner stops showing at this moment. Null never ends it.
 	 */
 	public function __construct(
 		string $id,
 		string $version,
 		BannerFields $fields,
+		string $packageUrl,
 		?DateTimeImmutable $start = null,
 		?DateTimeImmutable $end = null
 	) {
-		$this->id      = $id;
-		$this->version = $version;
-		$this->fields  = $fields;
-		$this->start   = $start;
-		$this->end     = $end;
+		$this->id         = $id;
+		$this->version    = $version;
+		$this->fields     = $fields;
+		$this->packageUrl = $packageUrl;
+		$this->start      = $start;
+		$this->end        = $end;
 	}
 
 	public function id(): string {
@@ -79,8 +84,10 @@ final class Banner {
 	 * of schedule or dismissed, or the callable declines.
 	 *
 	 * @param (callable(): bool)|null $shouldDisplay Omit to render unconditionally.
+	 * @param ?string                 $template      Path of a template file to render instead of the bundled one.
+	 * @param ?string                 $stylesheet    URL of a stylesheet to print instead of the bundled one.
 	 */
-	public function render( ?callable $shouldDisplay = null ): void {
+	public function render( ?callable $shouldDisplay = null, ?string $template = null, ?string $stylesheet = null ): void {
 		Dismissals::handleRequest( $this->id );
 
 		if (
@@ -99,20 +106,32 @@ final class Banner {
 		// anywhere else where the client called render().
 		$inline = array_filter( self::NOTICE_HOOKS, 'doing_action' ) === [];
 
-		$this->printTemplate( $this->fields, Dismissals::url( $this->id ), $inline );
+		$this->printStylesheet( $stylesheet );
+		$this->printTemplate( $template, $this->fields, Dismissals::url( $this->id ), $inline );
 	}
 
 	/**
-	 * Print the bundled template, or the one a filter chose for this ID, with $fields, $dismissUrl and
-	 * $inline in scope.
+	 * Print the stylesheet's link right here. render() runs mid-page, after wp-admin printed the
+	 * head's styles, so an enqueued one would print in the footer and leave the banner unstyled until then.
 	 */
-	private function printTemplate( BannerFields $fields, string $dismissUrl, bool $inline ): void {
-		$bundled  = __DIR__ . '/templates/banner.php';
-		$template = apply_filters( self::TEMPLATE_FILTER . $this->id, $bundled );
+	private function printStylesheet( ?string $stylesheet ): void {
+		wp_register_style(
+			self::STYLE_HANDLE . $this->id,
+			$stylesheet ?? rtrim( $this->packageUrl, '/' ) . '/src/templates/banner.css',
+			[],
+			$stylesheet === null ? Package::VERSION : null
+		);
+		wp_print_styles( self::STYLE_HANDLE . $this->id );
+	}
 
-		// Every other copy has already stood down for this ID, so a broken filter must not hide it.
-		if ( ! is_string( $template ) || ! is_file( $template ) ) {
-			$template = $bundled;
+	/**
+	 * Print the given template, or the bundled one, with $fields, $dismiss_url and $inline in scope.
+	 * They are snake_case so that templates pass the WordPress coding standards most plugins lint with.
+	 */
+	private function printTemplate( ?string $template, BannerFields $fields, string $dismiss_url, bool $inline ): void {
+		// Every other copy has already stood down for this ID, so a broken path must not hide it.
+		if ( $template === null || ! is_file( $template ) ) {
+			$template = __DIR__ . '/templates/banner.php';
 		}
 
 		require $template;

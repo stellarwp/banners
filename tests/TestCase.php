@@ -3,7 +3,6 @@
 namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey;
-use Brain\Monkey\Expectation\EscapeHelper;
 use Brain\Monkey\Functions;
 use Mockery;
 use Nexcess\Banners\Banner;
@@ -13,6 +12,11 @@ use PHPUnit\Framework\TestCase as PHPUnitTestCase;
 abstract class TestCase extends PHPUnitTestCase {
 
 	protected const USER_ID = 7;
+
+	/**
+	 * Where a plugin serves its copy of the package.
+	 */
+	protected const PACKAGE_URL = 'https://example.test/wp-content/plugins/my-plugin/vendor/stellarwp/banners/';
 
 	/**
 	 * @param array<string, string> $values Keyed by BannerFields property name.
@@ -35,16 +39,8 @@ abstract class TestCase extends PHPUnitTestCase {
 		Monkey\setUp();
 
 		Functions\stubEscapeFunctions();
-		Functions\when( 'esc_url' )->alias(
-			static function ( string $url, ?array $protocols = null ): string {
-				// WordPress drops a data: URI unless the caller allows that protocol explicitly.
-				if ( strpos( $url, 'data:' ) === 0 && ! in_array( 'data', $protocols ?? [], true ) ) {
-					return '';
-				}
-
-				return EscapeHelper::escUrl( $url );
-			}
-		);
+		Functions\stubTranslationFunctions();
+		$this->stubStyles();
 		Functions\when( 'get_current_user_id' )->justReturn( self::USER_ID );
 		// A logged-in user in wp-admin; the tests of the other cases override these.
 		Functions\when( 'is_admin' )->justReturn( true );
@@ -81,6 +77,27 @@ abstract class TestCase extends PHPUnitTestCase {
 	}
 
 	/**
+	 * WordPress's style registry, reduced to what render() relies on: printing a registered handle
+	 * prints a link to its file, carrying its version when it has one.
+	 */
+	private function stubStyles(): void {
+		$styles = [];
+
+		Functions\when( 'wp_register_style' )->alias(
+			static function ( string $handle, string $src, array $deps = [], ?string $ver = null ) use ( &$styles ): bool {
+				$styles[ $handle ] = $ver === null ? $src : $src . '?ver=' . $ver;
+
+				return true;
+			}
+		);
+		Functions\when( 'wp_print_styles' )->alias(
+			static function ( string $handle ) use ( &$styles ): void {
+				echo '<link rel="stylesheet" href="' . $styles[ $handle ] . '">';
+			}
+		);
+	}
+
+	/**
 	 * Stub everything the render path needs beyond the dismissal state.
 	 */
 	protected function stubRenderable(): void {
@@ -88,9 +105,14 @@ abstract class TestCase extends PHPUnitTestCase {
 		Functions\when( 'wp_nonce_url' )->returnArg();
 	}
 
-	protected function render( Banner $banner, ?callable $shouldDisplay = null ): string {
+	protected function render(
+		Banner $banner,
+		?callable $shouldDisplay = null,
+		?string $template = null,
+		?string $stylesheet = null
+	): string {
 		ob_start();
-		$banner->render( $shouldDisplay );
+		$banner->render( $shouldDisplay, $template, $stylesheet );
 
 		return (string) ob_get_clean();
 	}

@@ -8,28 +8,21 @@ namespace Nexcess\Banners;
 final class BannerFields {
 
 	/**
-	 * Bold first line.
+	 * The message, in white.
 	 */
 	public string $heading = '';
 
+	/**
+	 * Follows the heading in blue, on a line of its own where the banner is narrow.
+	 */
 	public string $body = '';
 
 	/**
-	 * The button renders only when both ctaLabel and ctaUrl are set.
+	 * The button renders only when both ctaLabel and ctaUrl are set. It opens in a new tab.
 	 */
 	public string $ctaLabel = '';
 
 	public string $ctaUrl = '';
-
-	/**
-	 * A URL or a data: URI, shown at most 64px wide.
-	 */
-	public string $image = '';
-
-	/**
-	 * Empty marks the image decorative, so screen readers skip it.
-	 */
-	public string $imageAlt = '';
 
 	/**
 	 * Screen-reader label of the dismiss control.

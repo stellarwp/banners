@@ -26,7 +26,7 @@ final class DismissalTest extends TestCase {
 
 		$this->assertStringContainsString(
 			'href="https://example.test/wp-admin/?nx-banners-dismiss=promo&nx-banners-nonce=signed"',
-			$this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) )
+			$this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) )
 		);
 	}
 
@@ -54,7 +54,7 @@ final class DismissalTest extends TestCase {
 
 		$before = time();
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) ) );
 		$this->assertSame( 1700000000, $stored['other'] );
 		$this->assertIsInt( $stored['promo'] );
 		$this->assertGreaterThanOrEqual( $before, $stored['promo'] );
@@ -69,7 +69,7 @@ final class DismissalTest extends TestCase {
 		Functions\when( 'wp_verify_nonce' )->justReturn( 1 );
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) );
+		$this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) );
 	}
 
 	public function testALoggedOutDismissalIsIgnored(): void {
@@ -82,7 +82,7 @@ final class DismissalTest extends TestCase {
 		Functions\expect( 'wp_verify_nonce' )->never();
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) );
+		$this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) );
 	}
 
 	public function testAnInvalidNonceIsIgnoredAndTheBannerStillRenders(): void {
@@ -94,7 +94,7 @@ final class DismissalTest extends TestCase {
 		Functions\expect( 'wp_verify_nonce' )->once()->andReturn( false );
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) ) );
 	}
 
 	public function testADismissalForAnotherBannerIsIgnored(): void {
@@ -106,7 +106,7 @@ final class DismissalTest extends TestCase {
 		Functions\expect( 'wp_verify_nonce' )->never();
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) ) );
 	}
 
 	public function testANonStringDismissalIsIgnored(): void {
@@ -118,7 +118,7 @@ final class DismissalTest extends TestCase {
 		Functions\expect( 'wp_verify_nonce' )->never();
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) );
+		$this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) );
 	}
 
 	public function testANonStringNonceIsIgnored(): void {
@@ -130,7 +130,7 @@ final class DismissalTest extends TestCase {
 		Functions\expect( 'wp_verify_nonce' )->never();
 		Functions\expect( 'update_user_meta' )->never();
 
-		$this->render( new Banner( 'promo', '1.0.0', new BannerFields() ) );
+		$this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL ) );
 	}
 
 }

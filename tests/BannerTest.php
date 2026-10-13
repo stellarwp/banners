@@ -3,12 +3,12 @@
 namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey\Actions;
-use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use DateTimeImmutable;
 use DateTimeZone;
 use Nexcess\Banners\Banner;
 use Nexcess\Banners\BannerFields;
+use Nexcess\Banners\Package;
 
 final class BannerTest extends TestCase {
 
@@ -17,19 +17,26 @@ final class BannerTest extends TestCase {
 		'body'     => 'Unlock every block.',
 		'ctaLabel' => 'Upgrade',
 		'ctaUrl'   => 'https://example.test/pro',
-		'image'    => 'data:image/svg+xml;base64,PHN2Zy8+',
 	];
 
 	/**
-	 * @return array<string, array{mixed}>
+	 * @return array<string, array{string}>
 	 */
 	public static function brokenTemplates(): array {
 		return [
-			'false'          => [ false ],
-			'null'           => [ null ],
-			'an array'       => [ [] ],
+			'an empty path'  => [ '' ],
 			'a missing file' => [ __DIR__ . '/Fixtures/no-such-template.php' ],
 			'a directory'    => [ __DIR__ ],
+		];
+	}
+
+	/**
+	 * @return array<string, array{string}>
+	 */
+	public static function packageUrls(): array {
+		return [
+			'with a trailing slash'    => [ self::PACKAGE_URL ],
+			'without a trailing slash' => [ rtrim( self::PACKAGE_URL, '/' ) ],
 		];
 	}
 
@@ -45,21 +52,51 @@ final class BannerTest extends TestCase {
 		];
 	}
 
-	public function testRendersTheCopyCtaImageAndDismissLink(): void {
+	public function testRendersTheCopyCtaAndDismissLink(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) );
 
-		$this->assertStringContainsString( '<strong>Go Pro</strong>', $output );
-		$this->assertStringContainsString( 'Unlock every block.', $output );
-		$this->assertStringContainsString(
-			'<a href="https://example.test/pro" class="button button-primary">Upgrade</a>',
+		$this->assertMatchesRegularExpression( '/>\s*Go Pro\s*<span class="nx-banner__accent">Unlock every block\.<\/span>/', $output );
+		$this->assertMatchesRegularExpression(
+			'/<a class="nx-banner__cta" href="https:\/\/example\.test\/pro" target="_blank" rel="noopener noreferrer">\s*Upgrade/',
 			$output
 		);
-		$this->assertStringContainsString( '<img src="data:image/svg+xml;base64,PHN2Zy8+" alt=""', $output );
-		$this->assertStringContainsString( 'class="notice-dismiss"', $output );
+		$this->assertStringContainsString( '(opens in a new tab)', $output );
+		$this->assertMatchesRegularExpression( '/<a class="nx-banner__dismiss" href="[^"]*\/wp-admin\/\?nx-banners-dismiss=x">/', $output );
 		$this->assertStringContainsString( 'Dismiss this banner.', $output );
+	}
+
+	/**
+	 * render() runs mid-page, after wp-admin printed the head's styles: an enqueued style would print
+	 * in the footer and leave the banner unstyled until then, so its link prints right before it.
+	 *
+	 * @dataProvider packageUrls
+	 */
+	public function testPrintsTheBundledStylesheetFromThePackageUrlBeforeTheBanner( string $packageUrl ): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+
+		$this->assertMatchesRegularExpression(
+			'/^<link rel="stylesheet" href="' . preg_quote( self::PACKAGE_URL . 'src/templates/banner.css?ver=' . Package::VERSION, '/' ) . '">\s*<div class="notice /',
+			$this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), $packageUrl ) )
+		);
+	}
+
+	public function testPrintsTheStylesheetItIsGiven(): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+
+		$output = $this->render(
+			new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ),
+			null,
+			null,
+			'https://example.test/wp-content/plugins/my-plugin/banner.css'
+		);
+
+		$this->assertStringContainsString( '<link rel="stylesheet" href="https://example.test/wp-content/plugins/my-plugin/banner.css">', $output );
+		$this->assertStringNotContainsString( 'src/templates/banner.css', $output );
 	}
 
 	/**
@@ -72,7 +109,7 @@ final class BannerTest extends TestCase {
 
 		$this->assertMatchesRegularExpression(
 			'/<div class="notice [^"]*\binline\b/',
-			$this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) )
+			$this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) )
 		);
 	}
 
@@ -92,7 +129,7 @@ final class BannerTest extends TestCase {
 	public function testOnANoticeHookCoreMovesItUnderTheHeading( string $hook ): void {
 		$output = $this->renderDuring( $hook );
 
-		$this->assertStringContainsString( '<strong>Go Pro</strong>', $output );
+		$this->assertStringContainsString( 'Go Pro', $output );
 		$this->assertDoesNotMatchRegularExpression( '/<div class="[^"]*\binline\b/', $output );
 	}
 
@@ -100,25 +137,9 @@ final class BannerTest extends TestCase {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( [ 'heading' => 'Go Pro', 'ctaLabel' => 'Upgrade' ] ) ) );
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( [ 'heading' => 'Go Pro', 'ctaLabel' => 'Upgrade' ] ), self::PACKAGE_URL ) );
 
-		$this->assertStringNotContainsString( 'button-primary', $output );
-	}
-
-	public function testOmitsTheImageWhenNoneIsGiven(): void {
-		$this->stubDismissed( [] );
-		$this->stubRenderable();
-
-		$this->assertStringNotContainsString( '<img', $this->render( new Banner( 'promo', '1.0.0', self::fields( [ 'heading' => 'Go Pro' ] ) ) ) );
-	}
-
-	public function testDescribesTheImageWithItsAltText(): void {
-		$this->stubDismissed( [] );
-		$this->stubRenderable();
-
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS + [ 'imageAlt' => 'Pro logo' ] ) ) );
-
-		$this->assertStringContainsString( '<img src="data:image/svg+xml;base64,PHN2Zy8+" alt="Pro logo"', $output );
+		$this->assertStringNotContainsString( 'nx-banner__cta', $output );
 	}
 
 	public function testEscapesEveryField(): void {
@@ -126,7 +147,6 @@ final class BannerTest extends TestCase {
 			'heading'      => '<script>heading</script>',
 			'body'         => '<img src=x onerror=alert(1)>',
 			'ctaLabel'     => '<b>cta</b>',
-			'imageAlt'     => '" onerror="alert(1)',
 			'dismissLabel' => '<svg onload=alert(1)>',
 		];
 
@@ -137,12 +157,8 @@ final class BannerTest extends TestCase {
 			new Banner(
 				'promo',
 				'1.0.0',
-				self::fields(
-					$copy + [
-						'ctaUrl' => "https://example.test/?a='b'",
-						'image'  => "https://example.test/logo.png?c='d'",
-					]
-				)
+				self::fields( $copy + [ 'ctaUrl' => "https://example.test/?a='b'" ] ),
+				self::PACKAGE_URL
 			)
 		);
 
@@ -151,7 +167,6 @@ final class BannerTest extends TestCase {
 			$this->assertStringContainsString( htmlspecialchars( $value, ENT_QUOTES, 'UTF-8' ), $output );
 		}
 		$this->assertStringContainsString( 'href="https://example.test/?a=&#039;b&#039;"', $output );
-		$this->assertStringContainsString( 'src="https://example.test/logo.png?c=&#039;d&#039;"', $output );
 	}
 
 	public function testRendersNothingOutsideTheAdmin(): void {
@@ -159,67 +174,69 @@ final class BannerTest extends TestCase {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
 	}
 
-	public function testAFilteredTemplateReplacesTheMarkup(): void {
+	public function testRendersWithTheTemplateItIsGivenAndPassesItTheDismissUrl(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
-		Filters\expectApplied( 'nx_banners_template:promo' )->once()->andReturn( __DIR__ . '/Fixtures/custom-banner.php' );
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+		$output = $this->render(
+			new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ),
+			null,
+			__DIR__ . '/Fixtures/custom-banner.php'
+		);
 
-		$this->assertSame( '<p class="custom">Go Pro</p>', trim( $output ) );
+		$this->assertStringContainsString( '<p class="custom">Go Pro</p>', $output );
+		$this->assertMatchesRegularExpression( '/<a class="custom-dismiss" href="[^"]*\/wp-admin\/\?nx-banners-dismiss=x">/', $output );
+		$this->assertStringNotContainsString( 'nx-banner__inner', $output );
 	}
 
 	/**
-	 * A broken filter must neither fatal the page nor hide the banner: by the time the template
+	 * A broken path must neither fatal the page nor hide the banner: by the time the template
 	 * loads, every other copy has already stood down for this ID.
 	 *
 	 * @dataProvider brokenTemplates
-	 *
-	 * @param mixed $template What the filter returned.
 	 */
-	public function testABrokenFilteredTemplateFallsBackToTheBundledOne( $template ): void {
+	public function testABrokenTemplatePathFallsBackToTheBundledOne( string $template ): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
-		Filters\expectApplied( 'nx_banners_template:promo' )->andReturn( $template );
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ), null, $template );
 
-		$this->assertStringContainsString( '<strong>Go Pro</strong>', $output );
+		$this->assertStringContainsString( 'nx-banner__inner', $output );
 	}
 
 	public function testRendersWhenTheCallableReturnsTrue(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ), static fn(): bool => true ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ), static fn(): bool => true ) );
 	}
 
 	public function testRendersNothingWhenTheCallableReturnsFalse(): void {
 		$this->stubDismissed( [] );
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ), static fn(): bool => false ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ), static fn(): bool => false ) );
 	}
 
 	public function testRendersNothingBeforeTheStart(): void {
 		$this->stubDismissed( [] );
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), new DateTimeImmutable( '+1 hour' ) ) ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, new DateTimeImmutable( '+1 hour' ) ) ) );
 	}
 
 	public function testRendersNothingAfterTheEnd(): void {
 		$this->stubDismissed( [] );
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), null, new DateTimeImmutable( '-1 hour' ) ) ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, null, new DateTimeImmutable( '-1 hour' ) ) ) );
 	}
 
 	public function testRendersInsideTheSchedule(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$banner = new Banner( 'promo', '1.0.0', new BannerFields(), new DateTimeImmutable( '-1 hour' ), new DateTimeImmutable( '+1 hour' ) );
+		$banner = new Banner( 'promo', '1.0.0', new BannerFields(), self::PACKAGE_URL, new DateTimeImmutable( '-1 hour' ), new DateTimeImmutable( '+1 hour' ) );
 
 		$this->assertNotSame( '', $this->render( $banner ) );
 	}
@@ -233,6 +250,7 @@ final class BannerTest extends TestCase {
 			'promo',
 			'1.0.0',
 			new BannerFields(),
+			self::PACKAGE_URL,
 			new DateTimeImmutable( '-1 hour', new DateTimeZone( 'Pacific/Kiritimati' ) ),
 			new DateTimeImmutable( '+1 hour', new DateTimeZone( 'Pacific/Pago_Pago' ) )
 		);
@@ -248,9 +266,9 @@ final class BannerTest extends TestCase {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$first  = $this->render( new Banner( 'campaign', '1.0.0', self::fields( [ 'heading' => 'First' ] ) ) );
+		$first  = $this->render( new Banner( 'campaign', '1.0.0', self::fields( [ 'heading' => 'First' ] ), self::PACKAGE_URL ) );
 		$second = $this->render(
-			new Banner( 'campaign', '1.0.0', self::fields( [ 'heading' => 'Second' ] ) ),
+			new Banner( 'campaign', '1.0.0', self::fields( [ 'heading' => 'Second' ] ), self::PACKAGE_URL ),
 			function (): bool {
 				$this->fail( 'A banner that already rendered asked its callable again.' );
 			}
@@ -266,21 +284,21 @@ final class BannerTest extends TestCase {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
 
-		$this->assertNotSame( '', $this->render( new Banner( 'upsell', '1.0.0', self::fields( self::FIELDS ) ) ) );
-		$this->assertNotSame( '', $this->render( new Banner( 'campaign', '1.0.0', self::fields( self::FIELDS ) ) ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'upsell', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'campaign', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
 	}
 
 	public function testRendersNothingOnceTheUserDismissedIt(): void {
 		$this->stubDismissed( [ 'promo' => true ] );
 
-		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) ) );
+		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
 	}
 
 	public function testDismissingAnotherBannerDoesNotHideThisOne(): void {
 		$this->stubDismissed( [ 'other' => true ] );
 		$this->stubRenderable();
 
-		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) ) );
+		$this->assertNotSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
 	}
 
 	/**
@@ -292,7 +310,7 @@ final class BannerTest extends TestCase {
 		$output = '';
 		Actions\expectDone( $hook )->once()->whenHappen(
 			function () use ( &$output ): void {
-				$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ) ) );
+				$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) );
 			}
 		);
 
