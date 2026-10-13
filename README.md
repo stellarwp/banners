@@ -13,7 +13,7 @@ every plugin that bundles the package.
 * [Rendering a banner](#rendering-a-banner)
 * [Fields](#fields)
 * [Versions](#versions)
-* [Replacing the template](#replacing-the-template)
+* [Replacing the template or stylesheet](#replacing-the-template-or-stylesheet)
 * [When a banner renders](#when-a-banner-renders)
 * [Dismissal](#dismissal)
 * [Shared state](#shared-state)
@@ -149,25 +149,28 @@ The markup lives in `src/templates/banner.php`, which escapes every value at out
 `src/templates/banner.css`. The banner sizes itself to the space it is given, not the screen: wide at
 the top of a page, stacked in a narrow spot such as a settings sidebar.
 
-## Replacing the template
+## Replacing the template or stylesheet
 
-Filter `nx_banners_template:{id}` to render a banner with your own template file:
+Pass `render()` your own template file, stylesheet URL, or both:
 
 ```php
-add_filter(
-	'nx_banners_template:my-plugin-pro-upsell',
-	static fn(): string => __DIR__ . '/templates/pro-upsell-banner.php'
+$banner->render(
+	static fn(): bool => my_plugin_is_admin_page(),
+	__DIR__ . '/templates/pro-upsell-banner.php',
+	plugins_url( 'assets/pro-upsell-banner.css', MY_PLUGIN_FILE )
 );
 ```
 
-The template gets `$fields`, `$dismiss_url` and `$inline`. Start from the bundled one: it escapes
-every value, adds the `inline` class when `$inline` is true, and links the dismiss control to
-`$dismiss_url`. Read `$fields` only through its properties, never by type, since it may be another
-copy's `BannerFields`.
+Pass `null` to keep the bundled one. Either applies only to this call, so it never changes how
+another plugin renders the same banner.
 
-The filter name is a string, so it applies whichever plugin renders the ID. Filter only IDs you own.
-A value that is not the path of a file falls back to the bundled template. The bundled stylesheet
-still prints.
+A template path that is not a file falls back to the bundled template. The template gets `$fields`,
+`$dismiss_url` and `$inline`. Start from the bundled one: it escapes every value, adds the `inline`
+class when `$inline` is true, and links the dismiss control to `$dismiss_url`. Read `$fields` only
+through its properties, never by type, since it may be another copy's `BannerFields`.
+
+A stylesheet you pass replaces the bundled one, so a template of your own still gets the bundled
+styles unless you pass one too.
 
 ## Versions
 
@@ -235,12 +238,11 @@ Everything shared between plugins is therefore reached through a string key:
 | `nx-banners-dismiss` | Dismiss query argument carrying the banner ID. The nonce action is `nx-banners-dismiss:{id}`. |
 | `nx-banners-nonce` | Nonce query argument, named so it cannot replace a `_wpnonce` already in the page URL. |
 | `nx_banners_rendered:{id}` | Action fired when a banner renders; later copies check `did_action()` and stand down. |
-| `nx_banners_template:{id}` | Filter: the path of the template file that banner renders with. |
 | `nx-banners-{id}` | Handle of the banner's stylesheet in WordPress's style registry. |
 
 A registered banner is called only through its methods, never checked by class: `version()` while
-registering, and `fields()` and `render( ?callable $shouldDisplay )` by whoever fetches it, along with
-the `BannerFields` property names.
+registering, and `fields()` and `render( ?callable $shouldDisplay, ?string $template, ?string $stylesheet )`
+by whoever fetches it, along with the `BannerFields` property names.
 
 These keys and methods are a cross-version compatibility contract. Do not rename them or change their
 shape: another plugin may still be running an older prefixed copy.

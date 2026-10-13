@@ -3,7 +3,6 @@
 namespace Nexcess\Banners\Tests;
 
 use Brain\Monkey\Actions;
-use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -20,13 +19,11 @@ final class BannerTest extends TestCase {
 	];
 
 	/**
-	 * @return array<string, array{mixed}>
+	 * @return array<string, array{string}>
 	 */
 	public static function brokenTemplates(): array {
 		return [
-			'false'          => [ false ],
-			'null'           => [ null ],
-			'an array'       => [ [] ],
+			'an empty path'  => [ '' ],
 			'a missing file' => [ __DIR__ . '/Fixtures/no-such-template.php' ],
 			'a directory'    => [ __DIR__ ],
 		];
@@ -84,6 +81,21 @@ final class BannerTest extends TestCase {
 			'/^<link rel="stylesheet" href="' . preg_quote( self::PACKAGE_URL . 'src/templates/banner.css', '/' ) . '">\s*<div class="notice /',
 			$this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), $packageUrl ) )
 		);
+	}
+
+	public function testPrintsTheStylesheetItIsGiven(): void {
+		$this->stubDismissed( [] );
+		$this->stubRenderable();
+
+		$output = $this->render(
+			new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ),
+			null,
+			null,
+			'https://example.test/wp-content/plugins/my-plugin/banner.css'
+		);
+
+		$this->assertStringContainsString( '<link rel="stylesheet" href="https://example.test/wp-content/plugins/my-plugin/banner.css">', $output );
+		$this->assertStringNotContainsString( 'src/templates/banner.css', $output );
 	}
 
 	/**
@@ -164,12 +176,15 @@ final class BannerTest extends TestCase {
 		$this->assertSame( '', $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) ) );
 	}
 
-	public function testAFilteredTemplateReplacesTheMarkupAndGetsTheDismissUrl(): void {
+	public function testRendersWithTheTemplateItIsGivenAndPassesItTheDismissUrl(): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
-		Filters\expectApplied( 'nx_banners_template:promo' )->once()->andReturn( __DIR__ . '/Fixtures/custom-banner.php' );
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) );
+		$output = $this->render(
+			new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ),
+			null,
+			__DIR__ . '/Fixtures/custom-banner.php'
+		);
 
 		$this->assertStringContainsString( '<p class="custom">Go Pro</p>', $output );
 		$this->assertMatchesRegularExpression( '/<a class="custom-dismiss" href="[^"]*\/wp-admin\/\?nx-banners-dismiss=x">/', $output );
@@ -177,19 +192,16 @@ final class BannerTest extends TestCase {
 	}
 
 	/**
-	 * A broken filter must neither fatal the page nor hide the banner: by the time the template
+	 * A broken path must neither fatal the page nor hide the banner: by the time the template
 	 * loads, every other copy has already stood down for this ID.
 	 *
 	 * @dataProvider brokenTemplates
-	 *
-	 * @param mixed $template What the filter returned.
 	 */
-	public function testABrokenFilteredTemplateFallsBackToTheBundledOne( $template ): void {
+	public function testABrokenTemplatePathFallsBackToTheBundledOne( string $template ): void {
 		$this->stubDismissed( [] );
 		$this->stubRenderable();
-		Filters\expectApplied( 'nx_banners_template:promo' )->andReturn( $template );
 
-		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ) );
+		$output = $this->render( new Banner( 'promo', '1.0.0', self::fields( self::FIELDS ), self::PACKAGE_URL ), null, $template );
 
 		$this->assertStringContainsString( 'nx-banner__inner', $output );
 	}

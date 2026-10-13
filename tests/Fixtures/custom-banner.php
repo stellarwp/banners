@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
 /**
- * A client's own template, chosen through the nx_banners_template:{id} filter.
+ * A client's own template, passed to render().
  *
  * @var \Nexcess\Banners\BannerFields $fields
  * @var string $dismiss_url

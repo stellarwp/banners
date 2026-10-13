@@ -105,9 +105,14 @@ abstract class TestCase extends PHPUnitTestCase {
 		Functions\when( 'wp_nonce_url' )->returnArg();
 	}
 
-	protected function render( Banner $banner, ?callable $shouldDisplay = null ): string {
+	protected function render(
+		Banner $banner,
+		?callable $shouldDisplay = null,
+		?string $template = null,
+		?string $stylesheet = null
+	): string {
 		ob_start();
-		$banner->render( $shouldDisplay );
+		$banner->render( $shouldDisplay, $template, $stylesheet );
 
 		return (string) ob_get_clean();
 	}

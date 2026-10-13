@@ -17,12 +17,6 @@ final class Banner {
 	private const RENDERED_ACTION = 'nx_banners_rendered:';
 
 	/**
-	 * Prefix of the filter that swaps a banner's template file. Shared across copies, so it applies
-	 * whichever copy renders the ID.
-	 */
-	private const TEMPLATE_FILTER = 'nx_banners_template:';
-
-	/**
 	 * Prefix of the handle a banner's stylesheet registers under.
 	 */
 	private const STYLE_HANDLE = 'nx-banners-';
@@ -90,8 +84,10 @@ final class Banner {
 	 * of schedule or dismissed, or the callable declines.
 	 *
 	 * @param (callable(): bool)|null $shouldDisplay Omit to render unconditionally.
+	 * @param ?string                 $template      Path of a template file to render instead of the bundled one.
+	 * @param ?string                 $stylesheet    URL of a stylesheet to print instead of the bundled one.
 	 */
-	public function render( ?callable $shouldDisplay = null ): void {
+	public function render( ?callable $shouldDisplay = null, ?string $template = null, ?string $stylesheet = null ): void {
 		Dismissals::handleRequest( $this->id );
 
 		if (
@@ -110,37 +106,33 @@ final class Banner {
 		// anywhere else where the client called render().
 		$inline = array_filter( self::NOTICE_HOOKS, 'doing_action' ) === [];
 
-		$this->printStylesheet();
-		$this->printTemplate( $this->fields, Dismissals::url( $this->id ), $inline );
+		$this->printStylesheet( $stylesheet );
+		$this->printTemplate( $template, $this->fields, Dismissals::url( $this->id ), $inline );
 	}
 
 	/**
 	 * Print the stylesheet's link right here. render() runs mid-page, after wp-admin printed the
 	 * head's styles, so an enqueued one would print in the footer and leave the banner unstyled until then.
 	 */
-	private function printStylesheet(): void {
+	private function printStylesheet( ?string $stylesheet ): void {
 		wp_register_style(
 			self::STYLE_HANDLE . $this->id,
-			rtrim( $this->packageUrl, '/' ) . '/src/templates/banner.css',
+			$stylesheet ?? rtrim( $this->packageUrl, '/' ) . '/src/templates/banner.css',
 			[],
 			// A new release replaces the bundled file at the same URL, so its modification time busts caches.
-			(string) filemtime( __DIR__ . '/templates/banner.css' )
+			$stylesheet === null ? (string) filemtime( __DIR__ . '/templates/banner.css' ) : null
 		);
 		wp_print_styles( self::STYLE_HANDLE . $this->id );
 	}
 
 	/**
-	 * Print the bundled template, or the one a filter chose for this ID, with $fields, $dismiss_url and
-	 * $inline in scope. They are snake_case so that templates pass the WordPress coding standards most
-	 * plugins lint with.
+	 * Print the given template, or the bundled one, with $fields, $dismiss_url and $inline in scope.
+	 * They are snake_case so that templates pass the WordPress coding standards most plugins lint with.
 	 */
-	private function printTemplate( BannerFields $fields, string $dismiss_url, bool $inline ): void {
-		$bundled  = __DIR__ . '/templates/banner.php';
-		$template = apply_filters( self::TEMPLATE_FILTER . $this->id, $bundled );
-
-		// Every other copy has already stood down for this ID, so a broken filter must not hide it.
-		if ( ! is_string( $template ) || ! is_file( $template ) ) {
-			$template = $bundled;
+	private function printTemplate( ?string $template, BannerFields $fields, string $dismiss_url, bool $inline ): void {
+		// Every other copy has already stood down for this ID, so a broken path must not hide it.
+		if ( $template === null || ! is_file( $template ) ) {
+			$template = __DIR__ . '/templates/banner.php';
 		}
 
 		require $template;
